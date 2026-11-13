@@ -1,7 +1,7 @@
 # Submission
 
 ## Candidate
-- **Name:** `<Your Name>`
+- **Name:** `LeskarX`
 - **Assignment chosen:** A (Data)
 - **Time spent (honest estimate):** ~7h
 

@@ -339,6 +339,7 @@ def _ingest_event_jsonl(
     events_total = 0
     malformed_events = 0
     duplicate_events_dropped = 0
+    seen_event_ids: set[str] = set()
 
     # In-memory lookup of call to phone links for fast processing
     call_links: dict[tuple[str, str], tuple[bytes, bool]] = {
@@ -376,12 +377,8 @@ def _ingest_event_jsonl(
     unresolved_batch: list[tuple] = []
 
     def flush_batches() -> None:
-        nonlocal duplicate_events_dropped
         if event_batch:
-            before = conn.total_changes
             conn.executemany(ledger_insert_sql, event_batch)
-            inserted = conn.total_changes - before
-            duplicate_events_dropped += len(event_batch) - inserted
             event_batch.clear()
         if link_batch:
             conn.executemany(link_insert_sql, link_batch)
@@ -394,6 +391,9 @@ def _ingest_event_jsonl(
             unresolved_batch.clear()
 
     with conn:
+        seen_event_ids.update(
+            row[0] for row in conn.execute("SELECT event_id FROM interaction_ledger")
+        )
         with jsonl_path.open("r", encoding="utf-8") as f:
             for line in f:
                 s = line.strip()
@@ -429,6 +429,13 @@ def _ingest_event_jsonl(
                 ):
                     malformed_events += 1
                     continue
+
+                # Deduplicate before touching call links or quarantine state.
+                # This set also catches repeated IDs buffered from this file.
+                if event_id in seen_event_ids:
+                    duplicate_events_dropped += 1
+                    continue
+                seen_event_ids.add(event_id)
 
                 occurred_at_utc, occurred_at_ist, occurred_date_ist = ts
 

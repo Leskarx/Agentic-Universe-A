@@ -1,33 +1,43 @@
 # AI Usage Disclosure
 
-AI tools are allowed. We want to know **how** you used them, because using them well is a
-skill. Honest answers are never held against you. Discovering undisclosed use is.
+AI tools were used during development and review. This disclosure describes the tools and their contributions; the candidate should confirm that it accurately reflects their work before submission.
 
 ## Tools used
-Antigravity (Gemini 3.8 Flash)
 
-## What I used them for
-- Surveying the repository, schemas, and `generate_data.py` edge cases
-- Designing and implementing the modular pipeline package under `solution/au_pipeline/` and CLI (`solution/cli.py`)
-- Writing SQLite DDL, triggers for append-only guarantees, `unresolved_events` quarantine tables, and SQL CTE/window-function reporting queries
-- Writing the comprehensive 8-module test suite in `solution/tests/` (28 unit and integration tests)
-- Benchmarking the large dataset and verifying incremental equivalence and PII-at-rest guarantees
+- **Antigravity (Gemini 3.8 Flash):** used during the initial implementation, as described below.
+- **OpenAI Codex (GPT-6):** used in a later review and documentation pass.
 
-## What I wrote or decided myself
-- Chose SQLite with WAL mode + append-only triggers (`BEFORE UPDATE` / `BEFORE DELETE`) over Python-side aggregation or external daemon dependencies
-- Chose HKDF-SHA256 key separation with keyed HMAC-SHA256 for phone matching (avoiding unsalted SHA-256 over the small 10-digit Indian mobile space) and AES-256-GCM for encrypted PII columns
-- Implemented a dedicated `unresolved_events` quarantine table to hold events arriving before leads or unlinked overrides, resolving them automatically when leads arrive
-- Implemented schema-driven PII encryption (`pii_attributes_enc` holding an AES-256-GCM encrypted JSON payload of all fields with `pii: true`) so new workflows require zero schema migrations
-- Designed conflicting call-to-phone detection in `call_phone_links` and `call_phone_conflicts` to prevent associating calls with the wrong lead
-- Filtered unknown disposition codes before `ROW_NUMBER()` ranking so invalid overrides never shadow valid dispositions
-- Maintained `duplicate_count` on leads and applied defaults (`preferred_language -> en`) dynamically on read rather than burning defaults into stored JSON
+## How AI tools were used
 
-## Where the AI was wrong or unhelpful
-- Initial module split introduced a circular import between `config.py` (`IST`) and `normalizers.py` (`normalize_header`), caught immediately on the first CLI run and resolved by moving `normalize_header` and `IST` into `normalizers.py`.
-- The initial PII-at-rest test called `PRAGMA wal_checkpoint(TRUNCATE)` while the test connection was still open after trigger error assertions, raising `sqlite3.OperationalError: database table is locked`; fixed by closing the connection before reading `.db` and `.db-wal` bytes.
-- An initial test assertion in `test_reports.py` miscounted the number of test event lines as 5 instead of 6; caught and corrected by reading the test fixture directly.
+### Antigravity (Gemini 3.8 Flash)
 
-## How I verified AI-generated code
-- Ran all 28 automated tests across 8 test modules covering normalizers, schemas, crypto, lead merges, event deduplication, disposition priorities, reports, and idempotency
-- Verified byte-for-byte report equivalence (`diff -ru`) across incremental (`drop_1` -> `drop_2`), re-ingested (`drop_1` twice), and all-at-once ingestion on `--seed 42 --scale small`
-- Benchmarked and verified row/count invariants on `--seed 42 --scale large` (~144k lead rows, ~633k event lines)
+- Surveyed the repository, schemas, and edge cases in `assignment-a-data/tools/generate_data.py`.
+- Helped design and implement the pipeline package under `solution/au_pipeline/` and the CLI in `solution/cli.py`.
+- Helped write SQLite schema and triggers, unresolved-event quarantine handling, and SQL report queries.
+- Helped write the eight test modules in `solution/tests/` (28 tests).
+- Was used for the original large-data benchmark and checks of incremental equivalence and PII-at-rest handling; the reported measurements are in `SUBMISSION.md`.
+
+### OpenAI Codex (GPT-6)
+
+- Reviewed the Assignment A architecture and implementation against the specification without changing files during the initial review.
+- Found a duplicate-event edge case: a repeated `event_id` with a conflicting phone could change call-link and conflict state before the database rejected the duplicate event.
+- Implemented a fix in `solution/au_pipeline/ingest.py` so duplicate IDs are detected before call-link and quarantine side effects. The existing test suite was rerun, and a targeted check confirmed that the conflicting duplicate is counted but does not create a conflict.
+- Rewrote `solution/README.md` with setup, operation, storage, idempotency, and architecture information.
+
+## Candidate decisions and review
+
+The candidate selected Assignment A and the overall design choices documented in `SUBMISSION.md`, including SQLite, append-only event history, keyed HMAC phone matching, AES-GCM encryption, unresolved-event tracking, and SQL-based reporting. AI assistance contributed implementation and review suggestions; the candidate is responsible for reviewing the final code and being able to explain and maintain it.
+
+## Issues found and corrected
+
+- An initial module split introduced a circular import between `config.py` (`IST`) and `normalizers.py` (`normalize_header`). It was caught during the first CLI run and resolved by moving those definitions into `normalizers.py`.
+- The initial PII-at-rest test called `PRAGMA wal_checkpoint(TRUNCATE)` while its test connection remained open, causing `sqlite3.OperationalError: database table is locked`. The connection was closed before the database and WAL files were inspected.
+- An initial assertion in `test_reports.py` expected five event lines instead of six. It was corrected after checking the fixture.
+- The later Codex review found the duplicate-event side-effect issue described above; the ingestion code was updated and checked with the test suite and a targeted scenario.
+
+## Verification
+
+- The 28 automated tests across eight modules pass with `python -m unittest discover -s solution/tests -v`.
+- During the original implementation, report equivalence was checked across incremental (`drop_1` then `drop_2`), repeat-ingestion, and all-at-once runs on `--seed 42 --scale small`; the results are recorded in `SUBMISSION.md`.
+- The original large-data benchmark and its counts are recorded in `SUBMISSION.md`.
+- During the later review, a targeted duplicate-ID scenario with a conflicting phone confirmed that the duplicate is counted and does not create a call-phone conflict.

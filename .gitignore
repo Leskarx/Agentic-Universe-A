@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 .env
 *.db
+*.db.key
 *.sqlite*
 data/
 data_large/
